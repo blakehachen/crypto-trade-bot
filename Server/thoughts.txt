@@ -1,0 +1,1 @@
+Look into Psycho-pg to integrate python and postgres directly
