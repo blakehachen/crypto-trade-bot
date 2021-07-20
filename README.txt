@@ -1,6 +1,6 @@
 Server
 -This takes http requests and adds them to a postgres database
--postgres database is needed for testing, in the table the names need to match up with
+-postgres database is needed for testing, the table the names need to match up with
  object attribute names in the json of the http requests
 -requires node, express, and pg (postgres library)
 
