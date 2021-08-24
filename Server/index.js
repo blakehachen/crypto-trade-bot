@@ -3,7 +3,7 @@ const pool = new Pool({
     user: 'postgres',
     host: 'localhost',
     database: 'api',
-    password: '',
+    password: 'password',
     port: 5432,
 })
 const express = require('express');
@@ -11,7 +11,7 @@ const router = express.Router();
 const app = express();
 app.use(express.urlencoded({extended: true}));
 app.use(express.json());
-const port = 80;
+const port = 8080;
 
 app.listen(port, () => {
     console.log(`App is running on port ${port}.`)

@@ -38,7 +38,7 @@ class Binance(Exchange):
     def historical_symbol_ticker_candle(self, start: datetime, end=None, interval=Client.KLINE_INTERVAL_1MINUTE):
         #if isinstance(interval, int):
         #    interval = str(floor(interval/60)) + 'm'
-
+        start = str(start)
         output = []
         for candle in self.client.get_historical_klines_generator(self.get_symbol(), interval, start, end):
             #print(f'P{candle}')
@@ -50,6 +50,10 @@ class Binance(Exchange):
         return output
 
     def get_asset_balance(self, currency):
+        response = self.client.get_asset_balance(currency)
+        return response['free']
+
+    def get_contract_balance(self, currency):
         response = self.client.get_asset_balance(currency)
         return response['free']
 
@@ -83,6 +87,9 @@ class Binance(Exchange):
             symbol=self.get_symbol(),
             limit=10
         )
+
+    def get_recent_orders_time(self):
+        return self.get_recent_orders()[-1]['time']
 
 
     def cancel_order(self, orderId):
