@@ -31,7 +31,7 @@ if len(sys.argv) > 1:
 print("Establishing connection to {} exchange".format(exchange_name))
 exchangeModule = importlib.import_module("exchanges."+exchange_name, package=None)
 exchangeClass = getattr(exchangeModule, exchange_name[0].upper() + exchange_name[1:])
-exchange = exchangeClass(config("API_KEY"), config("API_SECRET"))
+exchange = exchangeClass(config(exchange_name.upper() + "_API_KEY"), config(exchange_name.upper() + "_API_SECRET"))
 exchange.set_currency(currency)
 exchange.set_asset(asset)
 print(currency+"_"+asset)

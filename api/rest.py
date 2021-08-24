@@ -20,6 +20,7 @@ class Rest(ABC):
     client: requests = requests
     headers: dict = {"Content-Type": "application/json", "Accept": "application/json"}
     session = requests.Session()
+    
     total_items = 0
     step = 0
 

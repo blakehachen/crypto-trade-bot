@@ -20,6 +20,8 @@ class Exchange(ABC):
         self.currency = ''
         self.asset = ''
         self.strategy = None
+        self.marketClient = None
+        self.tradeClient = None
 
     def set_currency(self, symbol: str):
         self.currency = symbol
@@ -52,6 +54,10 @@ class Exchange(ABC):
     @abstractmethod
     def get_asset_balance(self, currency):
         pass
+    
+    @abstractmethod
+    def get_contract_balance(self, currency):
+        pass
 
     @abstractmethod
     def order(self, order: Order):
@@ -67,6 +73,9 @@ class Exchange(ABC):
     
     @abstractmethod
     def get_recent_orders(self):
+        pass
+    @abstractmethod
+    def get_recent_orders_time(self):
         pass
 
     @abstractmethod

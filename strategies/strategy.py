@@ -55,7 +55,7 @@ class Strategy(ABC):
         self.portfolio = {'currency': self.exchange.get_asset_balance(self.exchange.currency),
                           'asset': self.exchange.get_asset_balance(self.exchange.asset)}
     def get_recent_order_time(self):
-        return self.exchange.get_recent_orders()[-1]['time']
+        return self.exchange.get_recent_orders_time()
     
     def get_price(self):
         return self.price

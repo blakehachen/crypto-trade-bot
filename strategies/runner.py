@@ -1,4 +1,5 @@
 from datetime import date, datetime, timedelta
+from decouple import Undefined
 
 from numpy.core.fromnumeric import mean
 from models.order import Order
@@ -35,7 +36,7 @@ class Runner(Strategy):
         self.exchange.get_asset_balance(self.exchange.asset)
         
         current_price = self.exchange.symbol_ticker()
-        price_data = self.exchange.historical_symbol_ticker_candle(str(datetime.now() - timedelta(minutes=30)))
+        price_data = self.exchange.historical_symbol_ticker_candle(datetime.now() - timedelta(minutes=30))
         
         closes = []
         highs = []
@@ -50,6 +51,8 @@ class Runner(Strategy):
         np_closes = np.array(closes)
         #print(np_closes)
         adx = ta.ADX(np_highs, np_lows, np_closes, timeperiod=14)
+        di_plus = ta.PLUS_DI(np_highs, np_lows, np_closes, timeperiod=14)
+        di_minus = ta.MINUS_DI(np_highs, np_lows, np_closes, timeperiod=14)
         #print(adx)
         fastk, fastd = ta.STOCHRSI(np_closes, timeperiod=14, fastk_period=5, fastd_period=3, fastd_matype=0)
         ShortEMA = ta.EMA(np_closes, 9)
@@ -71,9 +74,21 @@ class Runner(Strategy):
         last_fastk = fastk[-1]
         last_fastd = fastd[-1]
         last_adx = adx[-1]
-        
+        last_di_minus = di_minus[-1]
+        last_di_plus = di_plus[-1]
+        prev_adx = adx[-2]
+        trend_check = ''
         should_buy = 0
         should_sell = 0
+        
+        if (last_adx > last_di_minus) and (last_di_plus > last_di_minus) and (last_adx > prev_adx):
+            trend_check = 'bull'
+        elif (last_adx > last_di_plus) and (last_di_minus > last_di_plus) and (last_adx > prev_adx):
+            trend_check = 'bear'
+        elif (last_adx < last_di_plus) and (last_adx < last_di_minus) and (last_adx > prev_adx):
+            trend_check = 'change'
+        else:
+            trend_check = 'unknown'
 
         
         
@@ -102,15 +117,17 @@ class Runner(Strategy):
         if should_sell > 0:
             print(f'[ SELL ] {str(should_sell)}')
         print(f"For a good buy.\n" +
-              f"last_macd ({str(last_macd)}) > last_signal({str(last_signal)})\nlast_lowerband_crossed: {str(last_lowerband_crossed)}\nlast_fastd({str(last_fastd)}) > 90 and last_fastk({str(last_fastk)}) > 90\nlowest price({price.lowest}) < current price({str(current_price.current)}) < avaerage price({str(average)})\n\n" +
+              f"last_macd ({str(last_macd)}) > last_signal({str(last_signal)})\nlast_lowerband_crossed: {str(last_lowerband_crossed)}\nlast_fastd({str(last_fastd)}) > 90 and last_fastk({str(last_fastk)}) > 90\nlowest price({price.lowest}) < close price({str(price.close)}) < avaerage price({str(average)})\n\n" +
               f"For a good sell.\n" +
-              f"last_macd({str(last_macd)}) < last_signal({str(last_signal)})\n last_upperband_crossed: {str(last_upperband_crossed)}\n last_fastd({str(last_fastd)} <= 20 and last_fastk({str(last_fastk)}) <= 20 )\nhighest price({price.highest}) > current price({str(current_price.current)}) > avaerage price({str(average)})\n\n")
+              f"last_macd({str(last_macd)}) < last_signal({str(last_signal)})\n last_upperband_crossed: {str(last_upperband_crossed)}\n last_fastd({str(last_fastd)} <= 20 and last_fastk({str(last_fastk)}) <= 20 )\nhighest price({price.highest}) > close price({str(price.close)}) > avaerage price({str(average)})\n\n")
         print(f'LAST ADX INDICATOR: {str(last_adx)}\n' +
                'If ADX (0-25): Trend is absent or weak\n' +
                'If ADX (25-50): Trend is strong\n'+
                'If ADX (50-75): Trend is very strong\n' +
                'If ADX (75-100): Trend is extremely strong\n')
-        
+        print(f'ADX TREND RATING: {trend_check}\n'+
+              f'PLUS_DI: {str(last_di_plus)}\n'+
+              f'MINUS_DI:{str(last_di_minus)}\n')
         print('Buy Points: ' + str(should_buy))
         print('Sell Points: ' + str(should_sell) + '\n')
         
@@ -120,11 +137,12 @@ class Runner(Strategy):
         
         #HLC Average = (High + Low + Close) / 3
         
-        if should_buy == 2 and float(price.lowest) <= float(current_price.current) < float(average) and should_sell == 0 and datetime.now() > (datetime.fromtimestamp(int(self.get_recent_order_time())/1000) + timedelta(minutes=3)) and last_adx >= 30:
+        if should_buy == 2 and float(price.lowest) <= float(price.close) < float(average) and should_sell == 0 and datetime.now() > (datetime.fromtimestamp(int(self.get_recent_order_time())/1000) + timedelta(minutes=3)) and (trend_check == 'bear' or trend_check == 'change' or trend_check == 'bull'):
             print(f'[LOW BUY] : {price.close}')
             if float(self.exchange.get_asset_balance(self.exchange.asset))/float(current_price.current) > 20:
                 newOrder = Order()
-                newOrder.quantity = int(round((0.20 * float(float(self.exchange.get_asset_balance(self.exchange.asset))/float(current_price.current))),2))
+                newOrder.leverage = newOrder.leverage
+                newOrder.quantity = int((0.25 * ((float((float(self.exchange.get_asset_balance(self.exchange.asset)))/float(current_price.current))))/(newOrder.lot_unit*current_price.current)))
                 newOrder.price = float(current_price.current)
                 newOrder.side = newOrder.BUY
                 newOrder.type = newOrder.TYPE_LIMIT
@@ -133,11 +151,12 @@ class Runner(Strategy):
                 newOrder.symbol = self.exchange.get_symbol()
                 print(newOrder.quantity)
                 self.order(newOrder)
-        elif should_buy == 2 and float(price.lowest) <= float(current_price.current) < average and datetime.now() > (datetime.fromtimestamp(int(self.get_recent_order_time())/1000) + timedelta(minutes=3)) and last_adx >= 30:
+        elif should_buy == 2 and float(price.lowest) <= float(price.close) < average and datetime.now() > (datetime.fromtimestamp(int(self.get_recent_order_time())/1000) + timedelta(minutes=3)) and (trend_check == 'bear' or trend_check == 'change' or trend_check == 'bull'):
             print(f'[MEDIUM BUY] : {price.close}')
-            if float(self.exchange.get_asset_balance(self.exchange.asset))/float(current_price.current):
+            if float(self.exchange.get_asset_balance(self.exchange.asset))/float(current_price.current) > 20:
                 newOrder = Order()
-                newOrder.quantity = int(round((0.33 * float(float(self.exchange.get_asset_balance(self.exchange.asset))/float(current_price.current))),2))
+                newOrder.leverage = newOrder.leverage
+                newOrder.quantity = int((0.50 * ((float((float(self.exchange.get_asset_balance(self.exchange.asset)))/float(current_price.current))))/(newOrder.lot_unit*current_price.current)))
                 newOrder.price = float(current_price.current)
                 newOrder.side = newOrder.BUY
                 newOrder.type = newOrder.TYPE_LIMIT
@@ -146,11 +165,12 @@ class Runner(Strategy):
                 newOrder.symbol = self.exchange.get_symbol()
                 print(newOrder.quantity)
                 self.order(newOrder)
-        if should_sell == 2 and float(price.highest) >= float(current_price.current) > float(average) and should_buy == 0 and datetime.now() > (datetime.fromtimestamp(int(self.get_recent_order_time())/1000) + timedelta(minutes=3)) and last_adx >= 30:
+        if should_sell == 2 and float(price.highest) >= float(price.close) > float(average) and should_buy == 0 and datetime.now() > (datetime.fromtimestamp(int(self.get_recent_order_time())/1000) + timedelta(minutes=3)) and (trend_check == 'bear' or trend_check == 'change' or trend_check == 'bull'):
             print(f'[MEDIUM SELL] : {price.close}')
-            if float(self.exchange.get_asset_balance(self.exchange.currency)) > 75:
+            if float(self.exchange.get_asset_balance(self.exchange.asset))/float(current_price.current) > 20:
                 newOrder = Order()
-                newOrder.quantity = int(round((0.33 * float(self.exchange.get_asset_balance(self.exchange.currency))),2))
+                newOrder.leverage = newOrder.leverage
+                newOrder.quantity = int((0.50 * ((float((float(self.exchange.get_asset_balance(self.exchange.asset)))/float(current_price.current))))/(newOrder.lot_unit*current_price.current)))
                 newOrder.price = float(current_price.current)
                 newOrder.side = newOrder.SELL
                 newOrder.type = newOrder.TYPE_LIMIT
@@ -159,11 +179,12 @@ class Runner(Strategy):
                 newOrder.symbol = self.exchange.get_symbol()
                 print(newOrder.quantity)
                 self.order(newOrder)
-        elif should_sell == 2 and float(price.highest) >= float(current_price.current) > float(average) and datetime.now() > (datetime.fromtimestamp(int(self.get_recent_order_time())/1000) + timedelta(minutes=3)) and last_adx >= 30:
+        elif should_sell == 2 and float(price.highest) >= float(price.close) > float(average) and datetime.now() > (datetime.fromtimestamp(int(self.get_recent_order_time())/1000) + timedelta(minutes=3)) and (trend_check == 'bear' or trend_check == 'change' or trend_check == 'bull'):
             print(f'[LOW SELL] : {price.close}')
-            if float(self.exchange.get_asset_balance(self.exchange.currency)) > 75:
+            if float(self.exchange.get_asset_balance(self.exchange.asset))/float(current_price.current) > 20:
                 newOrder = Order()
-                newOrder.quantity = int(round((0.10 * float(self.exchange.get_asset_balance(self.exchange.currency))),2))
+                newOrder.leverage = newOrder.leverage
+                newOrder.quantity = int((0.25 * ((float((float(self.exchange.get_asset_balance(self.exchange.asset)))/float(current_price.current))))/(newOrder.lot_unit*current_price.current)))
                 newOrder.price = float(current_price.current)
                 newOrder.side = newOrder.SELL
                 newOrder.type = newOrder.TYPE_LIMIT
@@ -173,11 +194,12 @@ class Runner(Strategy):
                 print(newOrder.quantity)
                 self.order(newOrder)
         
-        if should_sell == 3 and float(price.highest) >= float(current_price.current) > float(average) and datetime.now() > (datetime.fromtimestamp(int(self.get_recent_order_time())/1000) + timedelta(minutes=3)) and last_adx >= 40:
+        if should_sell == 3 and float(price.highest) >= float(price.close) > float(average) and datetime.now() > (datetime.fromtimestamp(int(self.get_recent_order_time())/1000) + timedelta(minutes=3)) and (trend_check == 'bear' or trend_check == 'change' or trend_check == 'bull'):
             print(f'[STRONG SELL] : {price.close}')
-            if float(self.exchange.get_asset_balance(self.exchange.currency)) > 75:
+            if float(self.exchange.get_asset_balance(self.exchange.asset))/float(current_price.current) > 20:
                 newOrder = Order()
-                newOrder.quantity = int(round((0.50 * float(self.exchange.get_asset_balance(self.exchange.currency))),2))
+                newOrder.leverage = newOrder.leverage
+                newOrder.quantity = int((1.00 * ((float((float(self.exchange.get_asset_balance(self.exchange.asset)))/float(current_price.current))))/(newOrder.lot_unit*current_price.current))) -2
                 newOrder.price = float(current_price.current)
                 newOrder.side = newOrder.SELL
                 newOrder.type = newOrder.TYPE_LIMIT
@@ -187,11 +209,12 @@ class Runner(Strategy):
                 print(newOrder.quantity)
                 self.order(newOrder)
 
-        if should_buy == 3 and float(price.lowest) <= float(current_price.current) < float(average) and datetime.now() > (datetime.fromtimestamp(int(self.get_recent_order_time())/1000) + timedelta(minutes=3)) and last_adx >= 40:
+        if should_buy == 3 and float(price.lowest) <= float(price.close) < float(average) and datetime.now() > (datetime.fromtimestamp(int(self.get_recent_order_time())/1000) + timedelta(minutes=3)) and (trend_check == 'bear' or trend_check == 'change' or trend_check=='bull'):
             print(f'[STRONG BUY] : {price.close}')
-            if float(self.exchange.get_asset_balance(self.exchange.asset))/float(current_price.current):
+            if float(self.exchange.get_asset_balance(self.exchange.asset))/float(current_price.current) > 20:
                 newOrder = Order()
-                newOrder.quantity = int(round((1.0 * float((float(self.exchange.get_asset_balance(self.exchange.asset)))/float(current_price.current)) - 2),2))
+                newOrder.leverage = newOrder.leverage
+                newOrder.quantity = int((1.00 * ((float((float(self.exchange.get_asset_balance(self.exchange.asset)))/float(current_price.current))))/(newOrder.lot_unit*current_price.current))) -2
                 newOrder.price = float(current_price.current)
                 newOrder.side = newOrder.BUY
                 newOrder.type = newOrder.TYPE_LIMIT
@@ -206,8 +229,8 @@ class Runner(Strategy):
         print('*******************************')
         print('Exchange: ', self.exchange.name)
         print('Pair: ', self.exchange.compute_symbol_pair())
-        print('Available: ',  self.exchange.get_asset_balance(self.exchange.currency) + ' ' +self.exchange.currency)
-        print('Available: ', self.exchange.get_asset_balance(self.exchange.asset) + ' ' + self.exchange.asset)
+        print('Available: ',  str(self.exchange.get_contract_balance(self.exchange.currency)) + ' ' + str(self.exchange.currency))
+        print('Available: ', str(self.exchange.get_asset_balance(self.exchange.asset)) + ' ' + str(self.exchange.asset))
         print('Price: ', current_price.current)
         #print(f'{self.exchange.historical_symbol_ticker_candle(str(datetime.now() - timedelta(days=14)), str(datetime.now()))}')
         #self.buy()
